@@ -1,0 +1,74 @@
+#include <stdio.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdlib.h>
+#include <unistd.h> // Required for usleep
+
+sem_t mutex;
+int shared_resource = 0;
+
+// The thread function must accept a void* argument
+void *thread_function(void *arg) 
+{
+    int i, val;
+    // Cast the argument back to a long integer
+    long thread_id = (long)arg;
+
+    for (i = 0; i < 5; i++) {
+        // Wait (lock) the semaphore
+        sem_wait(&mutex); 
+
+        // Critical section
+        val = shared_resource;
+        printf("Thread %1ld: Read %d from shared resource\n", thread_id, val);
+        val++; // Increment the local value
+        printf("Thread %1ld: Writing %d to shared resource\n", thread_id, val);
+        fflush(stdout); // Ensure immediate output
+        shared_resource = val;
+        // End of critical section
+
+        // Signal (unlock) the semaphore
+        sem_post(&mutex); 
+
+        // Optional: sleep to make race conditions more apparent if mutex was absent
+        usleep(100000); 
+    }
+    pthread_exit(NULL);
+}
+
+int main()
+{
+    // Correctly declare the threads array
+    pthread_t threads[3]; 
+    int i;
+    // Return value variable for error checking
+    int ret; 
+
+    // Initialize the semaphore: 
+    // 1st arg: address of semaphore
+    // 2nd arg: 0 for shared within a process
+    // 3rd arg: initial value (1 for mutex)
+    sem_init(&mutex, 0, 1);
+
+    for (i = 0; i < 3; i++) {
+        // Corrected pthread_create call
+        ret = pthread_create(&threads[i], NULL, thread_function, (void *)(long)i);
+        if (ret != 0) { // Check the return value for errors
+            perror("pthread_create failed");
+            return -1;
+        }
+    }
+
+    for (i = 0; i < 3; i++) {
+        // Wait for all threads to finish
+        ret = pthread_join(threads[i], NULL);
+        if (ret != 0) {
+            perror("pthread_join failed");
+            return -1;
+        }
+    }
+
+    // Destroy the semaphore
+    sem_destroy(&mutex); 
+    return 0;
+}
